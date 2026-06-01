@@ -28,18 +28,24 @@ def place_buy(ticker, dollars):
     )
     return client.submit_order(order)
 
-def place_sell(ticker):
-    positions = client.get_all_positions()
-    for p in positions:
-        if p.symbol == ticker:
-            order = MarketOrderRequest(
-                symbol=ticker,
-                qty=float(p.qty),
-                side=OrderSide.SELL,
-                time_in_force=TimeInForce.DAY
-            )
-            return client.submit_order(order)
-    return None
+def is_market_open():
+    return client.get_clock().is_open
+
+def place_sell(ticker, qty=None):
+    if qty is None:
+        for p in client.get_all_positions():
+            if p.symbol == ticker:
+                qty = float(p.qty)
+                break
+    if qty is None:
+        return None
+    order = MarketOrderRequest(
+        symbol=ticker,
+        qty=qty,
+        side=OrderSide.SELL,
+        time_in_force=TimeInForce.DAY
+    )
+    return client.submit_order(order)
 
 def get_positions():
     return client.get_all_positions()
