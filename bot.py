@@ -6,10 +6,11 @@ from src.indicators import add_indicators
 from src.signals import add_signals
 from src.trader import place_buy, place_sell, get_account, get_positions
 from dotenv import load_dotenv
+from src.fetch import fetch_and_save, get_sp500_tickers
 
 load_dotenv()
 
-TICKERS = ["AAPL", "TSLA", "NVDA", "MSFT"]
+TICKERS = get_sp500_tickers()
 TRADE_AMOUNT = 1000
 
 def is_market_open():
@@ -30,7 +31,7 @@ def get_live_signal(ticker):
     return latest["buy"], latest["sell"], latest["Close"]
 
 def run():
-    print(f"\n--- Trading bot started: {TICKERS} ---")
+    print(f"\n--- Trading bot started: {len(TICKERS)} stocks ---")
     account = get_account()
     print(f"Cash: ${account['cash']:.2f} | Portfolio: ${account['portfolio_value']:.2f}")
 
@@ -45,6 +46,7 @@ def run():
 
         for ticker in TICKERS:
             try:
+                time.sleep(1)
                 buy_signal, sell_signal, price = get_live_signal(ticker)
                 holding = any(p.symbol == ticker for p in positions)
 
@@ -63,7 +65,7 @@ def run():
 
         account = get_account()
         print(f"  Portfolio: ${account['portfolio_value']:.2f} | Cash: ${account['cash']:.2f}")
-        time.sleep(300)
+        time.sleep(600)
 
 if __name__ == "__main__":
     run()
