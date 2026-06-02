@@ -8,24 +8,32 @@ from src import factors, portfolio, risk, rebalance
 @dataclass
 class Results:
     daily_values:    list         # (date_str, port_val, spy_val, brake_active, n_pos)
+    qqq_values:      list         # parallel QQQ buy-and-hold values
     trades:          list         # list of Trade objects
     starting_cash:   float
     # Populated by report.compute_metrics
     total_return:    float = 0.0
     spy_return:      float = 0.0
+    qqq_return:      float = 0.0
     cagr:            float = 0.0
     spy_cagr:        float = 0.0
+    qqq_cagr:        float = 0.0
     sharpe:          float = 0.0
     spy_sharpe:      float = 0.0
+    qqq_sharpe:      float = 0.0
     max_drawdown:    float = 0.0
     spy_max_dd:      float = 0.0
+    qqq_max_dd:      float = 0.0
     annual_turnover: float = 0.0
     yearly_returns:  dict  = field(default_factory=dict)
     yearly_spy:      dict  = field(default_factory=dict)
+    yearly_qqq:      dict  = field(default_factory=dict)
 
 
 def run_backtest(closes: pd.DataFrame,
                  spy:    pd.Series,
+                 qqq:    pd.Series = None,
+                 rsp:    pd.Series = None,
                  starting_cash:    float = 100_000,
                  n_stocks:         int   = 30,
                  max_weight:       float = 0.10,
@@ -79,7 +87,27 @@ def run_backtest(closes: pd.DataFrame,
         spy_clean.index = spy_clean.index.tz_convert(None)
     spy_shares = None
 
+    qqq_clean  = None
+    qqq_shares = None
+    if qqq is not None:
+        qqq_clean = qqq.copy()
+        if qqq_clean.index.tz is not None:
+            qqq_clean.index = qqq_clean.index.tz_convert(None)
+
+    # RSP / SPY ratio series for regime detection
+    rsp_spy_ratio = None
+    if rsp is not None:
+        rsp_c = rsp.copy()
+        spy_c = spy.copy()
+        if rsp_c.index.tz is not None:
+            rsp_c.index = rsp_c.index.tz_convert(None)
+        if spy_c.index.tz is not None:
+            spy_c.index = spy_c.index.tz_convert(None)
+        common = rsp_c.index.intersection(spy_c.index)
+        rsp_spy_ratio = (rsp_c[common] / spy_c[common]).sort_index()
+
     daily_values = []
+    qqq_values   = []
     all_trades   = []
     total_sold   = 0.0
 
@@ -106,6 +134,19 @@ def run_backtest(closes: pd.DataFrame,
         else:
             spy_val = (spy_shares or 0) * (spy_clean.get(date, 0) or 0)
 
+        # QQQ buy-and-hold
+        if qqq_clean is not None:
+            q_px = qqq_clean.get(date)
+            if q_px and not np.isnan(q_px):
+                if qqq_shares is None:
+                    qqq_shares = cash / q_px
+                qqq_val = qqq_shares * q_px
+            else:
+                qqq_val = (qqq_shares or 0) * (qqq_clean.get(date, 0) or 0)
+        else:
+            qqq_val = 0.0
+        qqq_values.append(qqq_val)
+
         brake = risk.update(brake, port_val)
 
         daily_values.append((
@@ -128,10 +169,25 @@ def run_backtest(closes: pd.DataFrame,
         for c in fired:
             pending_changes.remove(c)
 
+        # ── Regime detection: narrow vs broad market ──────────────────────────
+        # Compare RSP (equal-weight S&P 500) vs SPY (cap-weight) over past 63
+        # trading days. When SPY beats RSP by 3%+, a handful of mega-caps are
+        # driving everything → concentrate into top 15 highest-conviction names.
+        # When the market is broad (RSP keeping up), hold the full top 30.
+        n_rebal = n_stocks
+        regime  = "broad"
+        if rsp_spy_ratio is not None:
+            hist = rsp_spy_ratio[rsp_spy_ratio.index <= date].tail(64)
+            if len(hist) >= 64:
+                spread = hist.iloc[-1] / hist.iloc[0] - 1   # RSP/SPY 63-day change
+                if spread < -0.03:      # SPY beating RSP by 3%+ → concentrated
+                    n_rebal = max(12, n_stocks // 2)
+                    regime  = f"concentrated (RSP-SPY {spread*100:+.1f}%)"
+
         # ── Factor scores restricted to active universe ───────────────────────
         scores_today = combined.loc[date] if date in combined.index else pd.Series(dtype=float)
         scores_today = scores_today[scores_today.index.isin(active_universe)]
-        target_tickers = factors.select_portfolio(scores_today, n=n_stocks)
+        target_tickers = factors.select_portfolio(scores_today, n=n_rebal)
 
         if not target_tickers:
             continue
@@ -223,6 +279,7 @@ def run_backtest(closes: pd.DataFrame,
 
     return Results(
         daily_values    = daily_values,
+        qqq_values      = qqq_values,
         trades          = all_trades,
         starting_cash   = starting_cash,
         annual_turnover = annual_turnover,

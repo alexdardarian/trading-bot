@@ -1,0 +1,19 @@
+{
+  "last_run": "2026-06-02",
+  "exit_buffer": {
+    "MCD": 1,
+    "NOC": 1,
+    "META": 1,
+    "PFE": 1,
+    "ABT": 1,
+    "ITW": 1,
+    "PYPL": 1,
+    "T": 1,
+    "CMCSA": 1,
+    "SYK": 1,
+    "HD": 1,
+    "NFLX": 1,
+    "ZTS": 1
+  },
+  "quarter": 1
+}
