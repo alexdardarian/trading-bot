@@ -202,8 +202,8 @@ def run(execute: bool = False, status_only: bool = False):
             print("  ✗ Could not compute entry weights — all tickers missing volatility data")
         else:
             latest = closes_for_weight.iloc[-1]
-            for t, w in entry_weights.items():
-                dollars = (w / total_ew) * avail
+            for t, wt in entry_weights.items():
+                dollars = (wt / total_ew) * avail
                 price   = float(latest.get(t, 0))
                 if price > 0:
                     entry_dollars[t] = dollars
