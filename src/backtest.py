@@ -1,36 +1,149 @@
-SLIPPAGE = 0.001  # 0.1% per trade
+import numpy as np
+import pandas as pd
+from dataclasses import dataclass, field
+
+from src import factors, portfolio, risk, rebalance
 
 
-def run_backtest(df, starting_cash=10000):
-    cash = starting_cash
-    shares = 0
-    trades = []
-    pending_buy = False
-    pending_sell = False
+@dataclass
+class Results:
+    daily_values:    list         # (date_str, port_val, spy_val, brake_active, n_pos)
+    trades:          list         # list of Trade objects
+    starting_cash:   float
+    # Populated by report.compute_metrics
+    total_return:    float = 0.0
+    spy_return:      float = 0.0
+    cagr:            float = 0.0
+    spy_cagr:        float = 0.0
+    sharpe:          float = 0.0
+    spy_sharpe:      float = 0.0
+    max_drawdown:    float = 0.0
+    spy_max_dd:      float = 0.0
+    annual_turnover: float = 0.0
+    yearly_returns:  dict  = field(default_factory=dict)
+    yearly_spy:      dict  = field(default_factory=dict)
 
-    for date, row in df.iterrows():
-        price = row["Close"]
 
-        # Execute orders from the PREVIOUS bar's signal — can't trade at the
-        # same close that generated the signal.
-        if pending_buy and cash > 0 and shares == 0:
-            shares = (cash * (1 - SLIPPAGE)) / price
-            cash = 0
-            trades.append({"date": date, "action": "BUY", "price": price})
-            pending_buy = False
-        elif pending_sell and shares > 0:
-            cash = shares * price * (1 - SLIPPAGE)
-            trades.append({"date": date, "action": "SELL", "price": price, "value": cash})
-            shares = 0
-            pending_sell = False
+def run_backtest(closes: pd.DataFrame,
+                 spy:    pd.Series,
+                 starting_cash: float = 100_000,
+                 n_stocks:  int   = 30,
+                 max_weight: float = 0.10,
+                 start_date: str  = "2005-01-01",
+                 end_date:   str  = "2025-12-31") -> Results:
 
-        if row.get("buy", False) and shares == 0:
-            pending_buy = True
-            pending_sell = False
-        elif row.get("sell", False) and shares > 0:
-            pending_sell = True
-            pending_buy = False
+    # ── Pre-compute factor scores (vectorized over full history) ──────────────
+    print("Computing momentum scores...", flush=True)
+    mom      = factors.compute_momentum_matrix(closes)
+    print("Computing quality proxy scores...", flush=True)
+    qual     = factors.compute_quality_matrix(closes)
+    print("Computing combined factor scores...", flush=True)
+    combined = factors.compute_combined_scores(mom, qual)
 
-    final_value = cash if shares == 0 else shares * df["Close"].iloc[-1] * (1 - SLIPPAGE)
-    returns = ((final_value - starting_cash) / starting_cash) * 100
-    return {"final_value": final_value, "returns": returns, "trades": trades}
+    # ── Simulation date range ─────────────────────────────────────────────────
+    sim_idx   = (closes.index >= start_date) & (closes.index <= end_date)
+    sim_dates = closes.index[sim_idx]
+
+    if len(sim_dates) == 0:
+        raise ValueError(f"No trading days between {start_date} and {end_date}")
+
+    # ── Monthly rebalance dates: last trading day of each calendar month ──────
+    month_ends = pd.date_range(start_date, end_date, freq="BME")
+    rebal_set  = set()
+    for me in month_ends:
+        before = sim_dates[sim_dates <= me]
+        if len(before):
+            rebal_set.add(before[-1])
+
+    print(f"\nSimulating {len(sim_dates)} days | universe {len(closes.columns)} tickers | "
+          f"{len(rebal_set)} monthly rebalances | ${starting_cash:,.0f}\n", flush=True)
+
+    # ── State ─────────────────────────────────────────────────────────────────
+    cash     = float(starting_cash)
+    holdings = {}                          # ticker -> shares
+    brake    = risk.BrakeState(peak=cash)
+
+    spy_clean = spy.copy()
+    if spy_clean.index.tz is not None:
+        spy_clean.index = spy_clean.index.tz_convert(None)
+    spy_shares = None
+
+    daily_values = []
+    all_trades   = []
+    total_sold   = 0.0
+
+    # ── Main loop ─────────────────────────────────────────────────────────────
+    for date in sim_dates:
+        row         = closes.loc[date]
+        prices_day  = row.dropna().to_dict()
+
+        # Mark to market
+        held = pd.Series(holdings)
+        if len(held):
+            shared_tickers = held.index.intersection(row.index)
+            pos_val = (held[shared_tickers] * row[shared_tickers].fillna(0)).sum()
+        else:
+            pos_val = 0.0
+        port_val = cash + pos_val
+
+        # SPY parallel buy-and-hold
+        spy_px = spy_clean.get(date)
+        if spy_px and not np.isnan(spy_px):
+            if spy_shares is None:
+                spy_shares = cash / spy_px
+            spy_val = spy_shares * spy_px
+        else:
+            spy_val = (spy_shares or 0) * (spy_clean.get(date, 0) or 0)
+
+        # Drawdown brake (state update every day, trades only on rebalance)
+        brake = risk.update(brake, port_val)
+
+        daily_values.append((
+            str(date.date()), port_val, spy_val,
+            brake.active, len(holdings)
+        ))
+
+        # ── Rebalance ─────────────────────────────────────────────────────────
+        if date not in rebal_set:
+            continue
+
+        scores_today = combined.loc[date] if date in combined.index else pd.Series(dtype=float)
+        target_tickers = factors.select_portfolio(scores_today, n=n_stocks)
+
+        if not target_tickers:
+            continue
+
+        raw_weights = portfolio.compute_target_weights(
+            target_tickers, closes, date, max_weight=max_weight
+        )
+
+        eq_frac = risk.equity_fraction(brake)
+        target_weights = {t: w * eq_frac for t, w in raw_weights.items()}
+
+        trades = rebalance.compute_trades(
+            str(date.date()), holdings, target_weights,
+            prices_day, port_val, cash
+        )
+
+        holdings, cash = rebalance.apply_trades(holdings, cash, trades)
+        all_trades.extend(trades)
+        total_sold += sum(tr.value for tr in trades if tr.action == "SELL")
+
+    # ── Liquidate at end ──────────────────────────────────────────────────────
+    last_row = closes.loc[sim_dates[-1]]
+    for t, shares in list(holdings.items()):
+        px = last_row.get(t)
+        if px and not np.isnan(px):
+            cash += shares * px * (1 - rebalance.SLIPPAGE)
+
+    # Rough annual turnover (refined in report.compute_metrics)
+    avg_pv = np.mean([v[1] for v in daily_values]) if daily_values else starting_cash
+    n_yrs  = (sim_dates[-1] - sim_dates[0]).days / 365.25
+    annual_turnover = (total_sold / avg_pv / n_yrs * 100) if (avg_pv > 0 and n_yrs > 0) else 0
+
+    return Results(
+        daily_values=daily_values,
+        trades=all_trades,
+        starting_cash=starting_cash,
+        annual_turnover=annual_turnover,
+    )
