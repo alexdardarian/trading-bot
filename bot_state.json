@@ -1,8 +1,7 @@
 {
   "last_run": "2026-06-02",
-  "exit_buffer": {
-    "PFE": 7,
-    "T": 7
-  },
-  "quarter": 7
+  "exit_buffer": {},
+  "quarter": 9,
+  "peak_value": 100293.22,
+  "brake_active": false
 }

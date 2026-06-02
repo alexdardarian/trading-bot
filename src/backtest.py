@@ -25,9 +25,14 @@ class Results:
     spy_max_dd:      float = 0.0
     qqq_max_dd:      float = 0.0
     annual_turnover: float = 0.0
+    blend_return:    float = 0.0
+    blend_cagr:      float = 0.0
+    blend_sharpe:    float = 0.0
+    blend_max_dd:    float = 0.0
     yearly_returns:  dict  = field(default_factory=dict)
     yearly_spy:      dict  = field(default_factory=dict)
     yearly_qqq:      dict  = field(default_factory=dict)
+    yearly_blend:    dict  = field(default_factory=dict)
 
 
 def run_backtest(closes: pd.DataFrame,

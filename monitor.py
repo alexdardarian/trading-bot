@@ -193,6 +193,17 @@ def render(client):
     dd_bar = bar(dd, 6)
     print(f"  Daily drift:      {signed(dd, pct=True):>14}  {dd_bar}")
 
+    # Drawdown from all-time peak (from persisted state)
+    peak        = state.get("peak_value", port)
+    brake_on    = state.get("brake_active", False)
+    dd_peak     = (port - peak) / peak * 100 if peak > 0 else 0.0
+    trigger_gap = -20.0 - dd_peak   # how far from the -20% brake trigger
+    if brake_on:
+        print(f"  {red('⚠ BRAKE ACTIVE')}    {signed(dd_peak, pct=True):>14}  from peak ${peak:,.0f}  → 50% deploy")
+    else:
+        status_str = f"  ({trigger_gap:+.1f}% to brake trigger)" if trigger_gap > -5 else ""
+        print(f"  From peak:        {signed(dd_peak, pct=True):>14}  (peak ${peak:,.0f}){status_str}")
+
     # Capital deployment
     invested = port - cash
     deploy   = invested / port * 100 if port else 0

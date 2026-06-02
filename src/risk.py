@@ -5,7 +5,8 @@ from dataclasses import dataclass
 # Hysteresis band prevents rapid toggling during choppy recoveries.
 BRAKE_TRIGGER  = -0.20
 BRAKE_RESTORE  = -0.10
-BRAKE_FRACTION =  0.50   # fraction of portfolio to keep in equities when active
+BRAKE_FRACTION =  0.50   # fraction BY WHICH to reduce equity exposure when active
+                          # equity_fraction = 1 - BRAKE_FRACTION (e.g. 0.50 → keep 50%)
 
 
 @dataclass
