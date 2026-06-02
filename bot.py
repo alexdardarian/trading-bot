@@ -9,6 +9,7 @@ from src.factors.scorer import composite_score
 from src.factors.vix_regime import vix_regime_at
 from src.factors.market_regime import is_market_uptrend
 from src.filters import vol_spike_mask, earnings_blackout_mask
+from src.factors.earnings_momentum import earnings_momentum_mask
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -77,10 +78,15 @@ def get_live_signal(ticker):
         df["buy"] = df_mom["buy"] | df_rev["buy"]
         df["sell"] = df_mom["sell"] & df_rev["sell"]
 
-    latest    = df.iloc[-1]
-    vol_safe  = bool(vol_spike_mask(df).iloc[-1])
-    earn_safe = bool(earnings_blackout_mask(ticker, df).iloc[-1])
-    buy       = bool(latest["buy"]) and vol_safe and earn_safe
+    latest     = df.iloc[-1]
+    vol_safe   = bool(vol_spike_mask(df).iloc[-1])
+    earn_safe  = bool(earnings_blackout_mask(ticker, df).iloc[-1])
+    pead_active = bool(earnings_momentum_mask(ticker, df).iloc[-1])
+
+    # Buy if: (regular signal passes all filters) OR (strong recent earnings beat)
+    regular_buy = bool(latest["buy"]) and vol_safe and earn_safe
+    pead_buy    = pead_active and earn_safe   # PEAD still respects blackout window
+    buy         = regular_buy or pead_buy
 
     return buy, latest["sell"], latest["Close"], score, breakdown
 
