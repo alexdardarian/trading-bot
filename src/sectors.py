@@ -1,14 +1,28 @@
 """
 Sector classification and sector-capped portfolio selection.
 
-8 broad buckets keep the cap meaningful at 25%:
-  max 7–8 stocks per sector in a 30-stock portfolio.
+Per-sector caps bias the portfolio toward the target sectors
+(Technology, Consumer, Industrials) while limiting over-representation
+of Financials and Healthcare.
 
 Any ticker not in SECTOR_MAP defaults to "Other" — it can still enter the
 portfolio but won't be double-counted against any sector's cap.
 """
 
-MAX_SECTOR_FRAC = 0.25   # no single sector may exceed 25% of n_stocks
+# Per-sector max fraction of n_stocks.
+# Primary sectors (sister's focus at Shay Capital) get a generous cap;
+# non-target sectors are tightened to prevent crowding them out.
+SECTOR_CAPS: dict[str, float] = {
+    "Technology":  0.40,   # up to 12 of 30 — primary target
+    "Consumer":    0.27,   # up to 8 of 30  — primary target
+    "Industrials": 0.27,   # up to 8 of 30  — primary target
+    "Financials":  0.13,   # up to 4 of 30  — tightened
+    "Healthcare":  0.13,   # up to 4 of 30  — tightened
+    "Energy":      0.10,   # up to 3 of 30
+    "Materials":   0.10,   # up to 3 of 30
+    "Other":       0.10,   # up to 3 of 30
+}
+DEFAULT_SECTOR_FRAC = 0.10   # fallback for any unmapped sector
 
 SECTOR_MAP: dict[str, str] = {
     # ── Technology (hardware, semis, software, internet, cloud) ─────────────
@@ -103,16 +117,14 @@ SECTOR_MAP: dict[str, str] = {
 def sector_capped_portfolio(
     scores: "pd.Series",       # noqa: F821 — avoid circular import
     n: int = 30,
-    max_frac: float = MAX_SECTOR_FRAC,
     min_valid: int = 15,
 ) -> list[str]:
     """
-    Select top-n tickers by score with a per-sector cap.
+    Select top-n tickers by score with per-sector caps from SECTOR_CAPS.
 
     Iterates scores in descending order; skips a ticker whose sector has
-    already filled its allocation (max_frac × n slots).  Continues past
-    capped sectors rather than stopping, so lower-ranked tickers from
-    under-represented sectors can fill remaining slots.
+    already filled its allocation.  Continues past capped sectors so that
+    lower-ranked tickers from under-represented sectors can fill remaining slots.
 
     Returns [] if fewer than min_valid tickers have valid scores.
     """
@@ -120,13 +132,13 @@ def sector_capped_portfolio(
     if len(valid) < min_valid:
         return []
 
-    max_per_sector = max(1, int(n * max_frac))
     sector_counts: dict[str, int] = {}
     result: list[str] = []
 
     for ticker in valid.index:
         sector = SECTOR_MAP.get(ticker, "Other")
-        if sector_counts.get(sector, 0) < max_per_sector:
+        cap = max(1, int(n * SECTOR_CAPS.get(sector, DEFAULT_SECTOR_FRAC)))
+        if sector_counts.get(sector, 0) < cap:
             result.append(ticker)
             sector_counts[sector] = sector_counts.get(sector, 0) + 1
             if len(result) == n:

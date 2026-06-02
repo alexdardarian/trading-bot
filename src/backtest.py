@@ -3,6 +3,7 @@ import pandas as pd
 from dataclasses import dataclass, field
 
 from src import factors, portfolio, risk, rebalance
+from src.sectors import sector_capped_portfolio
 
 
 @dataclass
@@ -192,7 +193,7 @@ def run_backtest(closes: pd.DataFrame,
         # ── Factor scores restricted to active universe ───────────────────────
         scores_today = combined.loc[date] if date in combined.index else pd.Series(dtype=float)
         scores_today = scores_today[scores_today.index.isin(active_universe)]
-        target_tickers = factors.select_portfolio(scores_today, n=n_rebal)
+        target_tickers = sector_capped_portfolio(scores_today, n=n_rebal)
 
         if not target_tickers:
             continue
