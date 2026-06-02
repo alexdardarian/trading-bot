@@ -26,11 +26,13 @@ class Results:
 
 def run_backtest(closes: pd.DataFrame,
                  spy:    pd.Series,
-                 starting_cash: float = 100_000,
-                 n_stocks:  int   = 30,
-                 max_weight: float = 0.10,
-                 start_date: str  = "2005-01-01",
-                 end_date:   str  = "2025-12-31") -> Results:
+                 starting_cash:    float = 100_000,
+                 n_stocks:         int   = 30,
+                 max_weight:       float = 0.10,
+                 start_date:       str   = "2005-01-01",
+                 end_date:         str   = "2025-12-31",
+                 initial_universe: list  = None,
+                 universe_schedule: list = None) -> Results:
 
     # ── Pre-compute factor scores (vectorized over full history) ──────────────
     print("Computing momentum scores...", flush=True)
@@ -57,6 +59,10 @@ def run_backtest(closes: pd.DataFrame,
 
     print(f"\nSimulating {len(sim_dates)} days | universe {len(closes.columns)} tickers | "
           f"{len(rebal_set)} monthly rebalances | ${starting_cash:,.0f}\n", flush=True)
+
+    # ── Universe schedule — sorted and ready ──────────────────────────────────
+    active_universe = set(initial_universe or closes.columns.tolist())
+    pending_changes = sorted(universe_schedule or [], key=lambda x: x[0])
 
     # ── State ─────────────────────────────────────────────────────────────────
     cash     = float(starting_cash)
@@ -107,7 +113,21 @@ def run_backtest(closes: pd.DataFrame,
         if date not in rebal_set:
             continue
 
+        # Apply any pending universe changes effective on or before this date
+        date_str_today = str(date.date())
+        fired = [c for c in pending_changes if c[0] <= date_str_today]
+        for change in fired:
+            _, adds, removes = change
+            for t in adds:
+                active_universe.add(t)
+                print(f"  [{date_str_today}] Universe + {adds}  - {removes}")
+            for t in removes:
+                active_universe.discard(t)
+            pending_changes.remove(change)
+
         scores_today = combined.loc[date] if date in combined.index else pd.Series(dtype=float)
+        # Restrict selection to currently active universe
+        scores_today = scores_today[scores_today.index.isin(active_universe)]
         target_tickers = factors.select_portfolio(scores_today, n=n_stocks)
 
         if not target_tickers:

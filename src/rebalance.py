@@ -1,7 +1,10 @@
 from dataclasses import dataclass
 
-SLIPPAGE  = 0.001   # 0.1% per side — conservative for large-cap S&P 500 names
-MIN_TRADE = 500.0   # skip rebalance trades smaller than this (reduces needless churn)
+SLIPPAGE   = 0.001  # 0.1% per side — conservative for large-cap S&P 500 names
+MIN_TRADE  = 500.0  # hard floor: never trade less than this in dollars
+TOLERANCE  = 0.25   # relative weight tolerance: skip rebalance if actual weight is
+                    # within 25% of target (e.g. target=3.5% → no trade if 2.6–4.4%).
+                    # Only new entrants and dropped tickers are always traded.
 
 
 @dataclass
@@ -41,18 +44,31 @@ def compute_trades(date_str: str, holdings: dict, target_weights: dict,
     all_tickers = set(holdings) | set(target_weights)
     sells, buys = [], []
 
+    total_val = sum(current_val.values()) + cash
+
     for t in all_tickers:
         cur = current_val.get(t, 0.0)
         tgt = target_val.get(t, 0.0)
         delta = tgt - cur
 
-        dropped = (t in holdings) and (t not in target_weights)
+        dropped  = (t in holdings) and (t not in target_weights)
+        new_entry = (t not in holdings) and (t in target_weights)
+
         if dropped:
-            sells.append((t, cur))   # fully liquidate regardless of MIN_TRADE
-        elif delta < -MIN_TRADE:
-            sells.append((t, abs(delta)))
-        elif delta > MIN_TRADE:
-            buys.append((t, delta))
+            sells.append((t, cur))       # always fully exit dropped tickers
+        elif new_entry:
+            buys.append((t, tgt))        # always fully enter new tickers
+        else:
+            # Continuing position: skip if within tolerance band
+            actual_w = cur / total_val if total_val > 0 else 0.0
+            target_w = tgt / total_val if total_val > 0 else 0.0
+            rel_drift = abs(actual_w - target_w) / target_w if target_w > 0 else 0.0
+            if rel_drift < TOLERANCE or abs(delta) < MIN_TRADE:
+                continue
+            if delta < 0:
+                sells.append((t, abs(delta)))
+            else:
+                buys.append((t, delta))
 
     sells.sort(key=lambda x: x[1], reverse=True)
     buys.sort(key=lambda x: x[1], reverse=True)
