@@ -176,7 +176,13 @@ def run(execute: bool = False, status_only: bool = False):
     exit_cash = sum(held_values.get(t, 0) for t in confirmed_exits)
     avail     = acct["cash"] + exit_cash
 
-    entry_weights = {}
+    entry_weights      = {}
+    entry_dollars      = {}
+    entry_prices       = {}   # latest close price per new entrant (used for qty calc)
+    closes_for_weight  = None
+
+    print(f"\n  Available cash for buys: ${avail:,.2f}")
+
     if new_entries:
         closes_for_weight = build_price_matrix(
             fetch_all(list(new_entries), start=FETCH_START, end=today)
@@ -186,10 +192,18 @@ def run(execute: bool = False, status_only: bool = False):
             closes_for_weight.index[-1], max_weight=1.0
         )
         total_ew = sum(entry_weights.values())
-        entry_dollars = {t: (entry_weights[t] / total_ew) * avail
-                         for t in entry_weights}
-    else:
-        entry_dollars = {}
+        if total_ew <= 0:
+            print("  ✗ Could not compute entry weights — all tickers missing volatility data")
+        else:
+            latest = closes_for_weight.iloc[-1]
+            for t, w in entry_weights.items():
+                dollars = (w / total_ew) * avail
+                price   = float(latest.get(t, 0))
+                if price > 0:
+                    entry_dollars[t] = dollars
+                    entry_prices[t]  = price
+                else:
+                    print(f"  ✗ No price for {t} — skipping")
 
     # ── Print proposal ────────────────────────────────────────────────────────
     print(f"\n  {'─'*w}")
@@ -257,14 +271,20 @@ def run(execute: bool = False, status_only: bool = False):
 
     for t in sorted(new_entries):
         dollars = entry_dollars.get(t, 0)
-        if dollars < 1:
-            print(f"  – SKIP {t} (${dollars:.2f} too small)")
+        price   = entry_prices.get(t, 0)
+
+        if dollars < 1 or price <= 0:
+            print(f"  – SKIP  {t:<6}  ${dollars:.2f}  @ ${price:.2f}  (too small or no price)")
             continue
+
+        qty = dollars / price
+        print(f"  → ORDER {t:<6}  {qty:.4f} shares  @ ~${price:.2f}  = ${dollars:,.2f}", end="  ")
+
         try:
-            broker.buy_notional(client, t, dollars)
-            print(f"  ✓ BOUGHT {t}  ${dollars:,.2f}")
+            broker.buy_qty(client, t, qty)
+            print("✓")
         except Exception as e:
-            print(f"  ✗ BUY {t} failed: {e}")
+            print(f"✗  {e}")
 
     # Save state
     state["last_run"]    = today

@@ -40,11 +40,15 @@ def is_market_open(client: TradingClient) -> bool:
     return client.get_clock().is_open
 
 
-def buy_notional(client: TradingClient, ticker: str, dollars: float):
-    """Buy $dollars worth of ticker at market."""
+def buy_qty(client: TradingClient, ticker: str, qty: float):
+    """
+    Buy a specific quantity (fractional OK) at market.
+    Using qty instead of notional because Alpaca silently fills notional
+    orders at 0 shares for non-fractionable stocks in paper trading.
+    """
     order = MarketOrderRequest(
         symbol=ticker,
-        notional=round(dollars, 2),
+        qty=round(qty, 9),
         side=OrderSide.BUY,
         time_in_force=TimeInForce.DAY,
     )
