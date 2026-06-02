@@ -51,21 +51,15 @@ def signed(val, pct=False, decimals=2):
 def next_quarter_end() -> date:
     today = date.today()
     y, m = today.year, today.month
-    if   m <= 3:  end = date(y, 3, 31)
-    elif m <= 6:  end = date(y, 6, 30)
-    elif m <= 9:  end = date(y, 9, 30)
-    else:          end = date(y, 12, 31)
-    if end <= today:
-        # Edge case: running on exactly the last day of quarter
-        end = date(y + (m == 12), (m % 12) + 3 if m % 3 == 0 else m + (3 - m % 3), 30)
-    return end
+    ends = [date(y, 3, 31), date(y, 6, 30), date(y, 9, 30), date(y, 12, 31),
+            date(y + 1, 3, 31)]   # next year's Q1 as fallback
+    return next(d for d in ends if d > today)
 
 
 def fetch_spy_change() -> float:
     """Returns SPY's percentage change today."""
     try:
-        hist = yf.download("SPY", period="5d", progress=False, auto_adjust=True)
-        hist = hist["Close"].dropna()
+        hist = yf.Ticker("SPY").history(period="5d", auto_adjust=True)["Close"].dropna()
         if len(hist) >= 2:
             return float((hist.iloc[-1] / hist.iloc[-2] - 1) * 100)
     except Exception:
@@ -139,10 +133,10 @@ def render(client):
           f"{dim('Since Entry'):>12}  {dim('Status')}")
     print(dim("  " + "─" * (w - 2)))
 
-    # Sort: biggest movers first (absolute daily change)
+    # Sort: biggest daily movers first
     positions_sorted = sorted(
         positions,
-        key=lambda p: abs(float(p.change_today or 0) / float(p.avg_entry_price or 1)),
+        key=lambda p: abs(float(p.unrealized_intraday_plpc or 0)),
         reverse=True
     )
 
@@ -150,11 +144,9 @@ def render(client):
     for p in positions_sorted:
         sym       = p.symbol
         mval      = float(p.market_value or 0)
-        entry     = float(p.avg_entry_price or 0)
-        cur       = float(p.current_price or 0)
         unr_pct   = float(p.unrealized_plpc or 0) * 100
-        intra_pct = (float(p.change_today or 0) / float(p.avg_entry_price or 1) * 100
-                     if p.avg_entry_price else 0)
+        # unrealized_intraday_plpc is today's % move vs yesterday's close — correct daily return
+        intra_pct = float(p.unrealized_intraday_plpc or 0) * 100
 
         # Status
         buf_count = exit_buf.get(sym, 0)
