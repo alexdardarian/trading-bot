@@ -1,4 +1,4 @@
-from src.portfolio import run_portfolio_backtest
+from src.portfolio import run_portfolio_backtest, run_core_satellite_backtest
 
 TICKERS = [
     "AAPL","MSFT","NVDA","AMD","AVGO","META","GOOGL","ORCL","CRM","NOW",
@@ -12,15 +12,23 @@ def print_results(r):
     print("\n" + "=" * 60)
     print(f"  MODE: {r['mode'].upper()}")
     print("=" * 60)
-    print(f"  Final value:       ${r['final_value']:>10,.2f}")
-    print(f"  Total return:      {r['total_return']:>+8.2f}%")
-    print(f"  SPY buy & hold:    {r['spy_return']:>+8.2f}%")
-    print(f"  Alpha vs SPY:      {r['alpha']:>+8.2f}%")
-    print(f"  Sharpe ratio:      {r['sharpe']:>8.2f}")
-    print(f"  Max drawdown:      {r['max_drawdown']:>8.2f}%")
-    print(f"  Win rate:          {r['win_rate']:>8.1f}%")
-    print(f"  Avg capital used:  {r['avg_deployed_pct']:>8.1f}%")
-    print(f"  Total trades:      {r['n_trades']:>8}")
+    print(f"  Final value:            ${r['final_value']:>10,.2f}")
+    print(f"  Strategy return:        {r['total_return']:>+8.2f}%")
+    print()
+    print(f"  ── Benchmarks ──────────────────────────────────────")
+    print(f"  SPY buy & hold:         {r['spy_return']:>+8.2f}%")
+    print(f"  Universe buy & hold:    {r['universe_bh']:>+8.2f}%   ← honest benchmark")
+    print()
+    print(f"  ── Alpha ───────────────────────────────────────────")
+    print(f"  vs SPY:                 {r['alpha_vs_spy']:>+8.2f}%")
+    print(f"  vs Universe (real):     {r['alpha_vs_universe']:>+8.2f}%")
+    print()
+    print(f"  ── Risk ────────────────────────────────────────────")
+    print(f"  Sharpe ratio:           {r['sharpe']:>8.2f}")
+    print(f"  Max drawdown:           {r['max_drawdown']:>8.2f}%")
+    print(f"  Win rate:               {r['win_rate']:>8.1f}%")
+    print(f"  Avg capital deployed:   {r['avg_deployed_pct']:>8.1f}%")
+    print(f"  Total trades:           {r['n_trades']:>8}")
     print()
     print("  Year-by-year:")
     for yr, ret in sorted(r["yearly_returns"].items()):
@@ -30,22 +38,21 @@ def print_results(r):
     print("=" * 60)
 
 
-# Run both modes — conservative shows the safety tradeoff,
-# aggressive shows what actually investing the money looks like
-aggressive  = run_portfolio_backtest(TICKERS, mode="aggressive",   starting_cash=100_000)
-conservative = run_portfolio_backtest(TICKERS, mode="conservative", starting_cash=100_000)
+core_sat   = run_core_satellite_backtest(TICKERS, starting_cash=100_000)
+aggressive = run_portfolio_backtest(TICKERS, mode="aggressive", starting_cash=100_000)
 
+if core_sat:
+    print_results(core_sat)
 if aggressive:
     print_results(aggressive)
-if conservative:
-    print_results(conservative)
 
-if aggressive and conservative:
-    print("\n  SIDE BY SIDE")
-    print(f"  {'':20}  {'Aggressive':>12}  {'Conservative':>12}")
-    print(f"  {'Return':20}  {aggressive['total_return']:>+11.2f}%  {conservative['total_return']:>+11.2f}%")
-    print(f"  {'Alpha vs SPY':20}  {aggressive['alpha']:>+11.2f}%  {conservative['alpha']:>+11.2f}%")
-    print(f"  {'Sharpe':20}  {aggressive['sharpe']:>12.2f}  {conservative['sharpe']:>12.2f}")
-    print(f"  {'Max drawdown':20}  {aggressive['max_drawdown']:>11.2f}%  {conservative['max_drawdown']:>11.2f}%")
-    print(f"  {'Avg deployed':20}  {aggressive['avg_deployed_pct']:>11.1f}%  {conservative['avg_deployed_pct']:>11.1f}%")
-    print(f"  {'Win rate':20}  {aggressive['win_rate']:>11.1f}%  {conservative['win_rate']:>11.1f}%")
+if core_sat and aggressive:
+    print("\n  COMPARISON")
+    print(f"  {'':28}  {'Core-Satellite':>14}  {'Aggressive':>12}  {'Universe B&H':>12}")
+    ubh = core_sat["universe_bh"]
+    print(f"  {'Return':28}  {core_sat['total_return']:>+13.2f}%  {aggressive['total_return']:>+11.2f}%  {ubh:>+11.2f}%")
+    print(f"  {'Alpha vs universe':28}  {core_sat['alpha_vs_universe']:>+13.2f}%  {aggressive['alpha_vs_universe']:>+11.2f}%  {'0.00%':>12}")
+    print(f"  {'Alpha vs SPY':28}  {core_sat['alpha_vs_spy']:>+13.2f}%  {aggressive['alpha_vs_spy']:>+11.2f}%")
+    print(f"  {'Sharpe':28}  {core_sat['sharpe']:>14.2f}  {aggressive['sharpe']:>12.2f}")
+    print(f"  {'Max drawdown':28}  {core_sat['max_drawdown']:>13.2f}%  {aggressive['max_drawdown']:>11.2f}%")
+    print(f"  {'Avg deployed':28}  {core_sat['avg_deployed_pct']:>13.1f}%  {aggressive['avg_deployed_pct']:>11.1f}%")
