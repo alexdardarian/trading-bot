@@ -157,12 +157,18 @@ def run(execute: bool = False, status_only: bool = False):
     top_set     = set(top_tickers)
 
     # ── Update exit buffer ────────────────────────────────────────────────────
-    # Reset stocks that returned to the top-N
+    # Drop any stale buffer entries for stocks no longer held in Alpaca.
+    # This happens when a previous run's orders filled without the bot knowing.
+    for t in list(exit_buffer):
+        if t not in held_tickers:
+            del exit_buffer[t]
+
+    # Reset buffer for stocks that returned to the top-N
     for t in list(exit_buffer):
         if t in top_set:
             del exit_buffer[t]
 
-    # Increment stocks that are held but outside the top-N
+    # Increment buffer for stocks that are held but outside the top-N
     for t in held_tickers:
         if t not in top_set:
             exit_buffer[t] = exit_buffer.get(t, 0) + 1
@@ -262,10 +268,29 @@ def run(execute: bool = False, status_only: bool = False):
     print(f"  EXECUTING ORDERS")
     print(f"  {'─'*w}\n")
 
+    # Cancel any pending orders from previous runs before placing new ones.
+    # Without this, sells fail with "held_for_orders" if a DAY order is still queued.
+    print("  Cancelling any open orders...", flush=True)
+    try:
+        broker.cancel_all_orders(client)
+        print("  ✓ Open orders cleared\n")
+    except Exception as e:
+        print(f"  ! Could not cancel orders: {e}\n")
+
+    # Re-fetch positions so we only sell what Alpaca actually holds right now.
+    # exit_buffer can be stale if positions were closed by a previous run's orders.
+    live_positions = broker.get_positions(client)
+    live_tickers   = set(live_positions)
+
     for t in sorted(confirmed_exits):
+        if t not in live_tickers:
+            print(f"  – SKIP  {t:<6}  (not in Alpaca — already sold or never held)")
+            exit_buffer.pop(t, None)   # clean stale entry from buffer
+            continue
         try:
             broker.sell_all(client, t)
             print(f"  ✓ SOLD   {t}")
+            exit_buffer.pop(t, None)
         except Exception as e:
             print(f"  ✗ SELL {t} failed: {e}")
 

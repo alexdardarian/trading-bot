@@ -55,6 +55,11 @@ def buy_qty(client: TradingClient, ticker: str, qty: float):
     return client.submit_order(order)
 
 
+def cancel_all_orders(client: TradingClient):
+    """Cancel every open order. Call before placing new orders to avoid duplicates."""
+    client.cancel_orders()
+
+
 def sell_all(client: TradingClient, ticker: str):
     """Close the entire position in ticker at market."""
     client.close_position(ticker)

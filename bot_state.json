@@ -1,19 +1,8 @@
 {
   "last_run": "2026-06-02",
   "exit_buffer": {
-    "MCD": 5,
-    "NOC": 4,
-    "META": 4,
-    "PFE": 5,
-    "ABT": 4,
-    "ITW": 4,
-    "PYPL": 5,
-    "T": 5,
-    "CMCSA": 5,
-    "SYK": 5,
-    "HD": 5,
-    "NFLX": 4,
-    "ZTS": 5
+    "PFE": 7,
+    "T": 7
   },
-  "quarter": 5
+  "quarter": 7
 }
