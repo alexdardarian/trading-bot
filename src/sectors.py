@@ -53,7 +53,7 @@ SECTOR_MAP: dict[str, str] = {
     "BRK-B": "Financials", "V":     "Financials", "MA":    "Financials",
     "COF":   "Financials", "BLK":   "Financials", "TROW":  "Financials",
     "PGR":   "Financials", "TRV":   "Financials", "HIG":   "Financials",
-    "BK":    "Financials", "STT":   "Financials",
+    "BNY":   "Financials", "STT":   "Financials",
 
     # ── Healthcare (pharma, biotech, devices, managed care) ─────────────────
     "JNJ":  "Healthcare",  "PFE":  "Healthcare",  "MRK":  "Healthcare",

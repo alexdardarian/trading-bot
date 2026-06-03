@@ -18,7 +18,7 @@ UNIVERSE_2005 = [
     "JPM",  "BAC",  "C",    "WFC",  "GS",   "MS",   "AIG",  "AXP",  "SCHW",
     "USB",  "CME",  "MCO",  "SPGI", "MET",  "ALL",
     # Asset managers, payment rails, insurers — all large and established by 2005
-    "BRK-B","COF",  "BLK",  "TROW", "PGR",  "TRV",  "HIG",  "BK",   "STT",
+    "BRK-B","COF",  "BLK",  "TROW", "PGR",  "TRV",  "HIG",  "BNY",  "STT",
 
     # Healthcare
     "JNJ",  "PFE",  "MRK",  "ABT",  "LLY",  "AMGN", "GILD", "TMO",
